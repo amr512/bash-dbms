@@ -1,35 +1,87 @@
 #!/bin/bash
+source utils.sh
 
 if [ ! -d "$DB_NAME" ]; then
     whiptail --msgbox "This script must be called from main.sh" $MSG_SIZE
     exit 1
 fi
+
 cd "$DB_NAME"
+FIELD_TYPES=("string" "number" "boolean")
 
-FIELD_TYPES=("1" "string" "2" "number" "3" "boolean")
 
-
-function edit_table_fields(){
-
-    FIELDS=$(head -n1 "$1.csv" | awk -F '-' '{print $1}' | sed s/,/\\n/g | nl -w2 -s' ')
-    OPTION=$(whiptail --title "Fields" --menu "Choose an option" $MENU_SIZE \
-        $FIELDS "+" "New Field" 3>&1 1>&2 2>&3)
+function edit_field(){
+    # change field type, make primary, or delete field
+    local field_name=$(echo "$1" | awk -F '*' '{print $1}' | awk -F ':' '{print $1}')
+    local field_type=$(echo "$1" | awk -F ':' '{print $2}' | awk -F '-' '{print $1}' | awk -F '*' '{print $1}')
+    local is_primary=$(echo "$1" | grep "\*")
+    local options=("Change_Type" "Make_Primary" "Delete_Field")
+    local choice=$(whiptail --title "Edit Field" --menu "Choose an option" $MENU_SIZE $(prepare_options ${options[@]}) 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
         return
     fi
-    if [ $OPTION == "+" ]; then
-        FIELD_NAME=$(whiptail --inputbox "Enter the name of the field to add" $MSG_SIZE 3>&1 1>&2 2>&3)
-        if [ $? -ne 0 ]; then
-            return
-        fi
-        FIELD_TYPE=$(whiptail --title "Field Type" --menu "Choose a field type" $MENU_SIZE \
-            "${FIELD_TYPES[@]}" 3>&1 1>&2 2>&3)
-        if [ $? -ne 0 ]; then
-            return
-        fi
-        sed -i "s/-/,$FIELD_NAME:${FIELD_TYPES[$FIELD_TYPE]}-/" "$1.csv"
-    fi
+    case $choice in
+        0)
+            local new_type=$(whiptail --title "Field Type" --menu "Choose a field type" $MENU_SIZE $(prepare_options ${FIELD_TYPES[@]}) 3>&1 1>&2 2>&3)
+            if [ $? -ne 0 ]; then
+                return
+            fi
+            sed -i "s/$field_name:$field_type/$field_name:${FIELD_TYPES[$new_type]}/" "$2.csv"
+            ;;
+        1)
+            if [ -z "$is_primary" ]; then
+                sed -i "s/\*//" "$2.csv"
+                sed -i "s/$field_name:$field_type/$field_name:$field_type*/" "$2.csv"
+                
+            else
+                whiptail --msgbox "Already a primary key" $MSG_SIZE
+            fi
+            ;;
+        2)
+            if [ -z "$is_primary" ]; then
+                sed -i "s/$field_name:$field_type//" "$2.csv"
+            else
+                whiptail --msgbox "You cannot delete the primary key of a table" $MSG_SIZE
+            fi
+            ;;
+    esac
+
 }
+
+function manage_table_fields(){
+    while true; do
+        FIELDS=($(head -n1 "$1.csv" | tr ',' '\n'))
+        OPTION=$(whiptail --title "Fields" --menu "Select a field to edit" $MENU_SIZE \
+            $(prepare_options ${FIELDS[@]}) "+" "New Field" 3>&1 1>&2 2>&3)
+        if [ $? -ne 0 ]; then
+            break
+        fi
+        if [ $OPTION == "+" ]; then
+            FIELD_NAME=$(whiptail --inputbox "Enter the name of the field to add" $MSG_SIZE 3>&1 1>&2 2>&3)
+            if [ $? -ne 0 ]; then
+                return
+            fi
+            FIELD_TYPE=$(whiptail --title "Field Type" --menu "Choose a field type" $MENU_SIZE \
+                $(prepare_options ${FIELD_TYPES[@]}) 3>&1 1>&2 2>&3) 
+            if [ $? -ne 0 ]; then
+                return
+            fi
+            if ! [ -z "$FIELD_NAME" ] && [[ $FIELD_NAME =~ ^[a-zA-Z0-9_]+$ ]]; then
+                if [ -z "$FIELDS" ]; then
+                    echo "$FIELD_NAME:${FIELD_TYPES[$FIELD_TYPE]}*" >> "$1.csv"
+                else
+                    sed -i "s/-/,$FIELD_NAME:${FIELD_TYPES[$FIELD_TYPE]}/" "$1.csv"
+                fi
+            fi
+        else
+            edit_field "${FIELDS[$OPTION]}" "$1"
+            # whiptail --msgbox "You selected field ${FIELDS[$OPTION]}" $MSG_SIZE
+            # sed -i "s/\*//" "$1.csv"
+            # sed -i "s/${FIELDS[$OPTION]}/${FIELDS[$OPTION]}*/" "$1.csv"
+        fi
+    done
+}
+
 
 
 function create_table(){
@@ -43,7 +95,7 @@ function create_table(){
             whiptail --msgbox "Table name cannot be empty" $MSG_SIZE
         else
             touch "$TABLE_NAME.csv"
-            edit_table_fields "$TABLE_NAME"
+            manage_table_fields "$TABLE_NAME"
             whiptail --msgbox "Table $TABLE_NAME created successfully" $MSG_SIZE
             break
         fi
@@ -61,7 +113,7 @@ function list_tables(){
         if [ $? -ne 0 ]; then
             return
         else
-            edit_table_fields "$(echo "$TABLES" | awk -v choice="$OPTION" '$1 == choice {print $2}')"
+            manage_table_fields "$(echo "$TABLES" | awk -v choice="$OPTION" '$1 == choice {print $2}')"
         fi
     fi
 
