@@ -25,6 +25,11 @@ function create_database() {
 
 function list_databases() {
     DB_LIST=$(ls -d */ | sed 's/\///' | nl -w2 -s' ')
+    if [ -z "$DB_LIST" ]; then
+        whiptail --msgbox "No databases found" $MSG_SIZE
+        return
+    fi
+
     DB_CHOICE=$(whiptail --title "Databases" --menu "Choose a database" $MENU_SIZE \
         $DB_LIST 3>&1 1>&2 2>&3)
 
@@ -43,6 +48,10 @@ function connect_to_database() {
 
 function drop_database() {
     DB_LIST=$(ls -d */ | sed 's/\///' | nl -w2 -s' ')
+    if [ -z "$DB_LIST" ]; then
+        whiptail --msgbox "No databases found" $MSG_SIZE
+        return
+    fi
     DB_CHOICE=$(whiptail --title "Databases" --menu "Choose a database to drop" $MENU_SIZE \
         $DB_LIST 3>&1 1>&2 2>&3)
 

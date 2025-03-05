@@ -39,7 +39,28 @@ function edit_field(){
             ;;
         2)
             if [ -z "$is_primary" ]; then
-                sed -i "s/$field_name:$field_type//" "$2.csv"
+                awk -v field="$field_name:$field_type" 'BEGIN{FS=OFS=","} 
+                NR==1 {
+                    for(i=1;i<=NF;i++) {
+                        if($i==field) {
+                            col=i
+                            $i=""
+                        }
+                    }
+                } 
+                NR>1 {
+                    for(i=1;i<=NF;i++) {
+                        if(i==col) {
+                            $i=""
+                        }
+                    }
+                } 
+                {
+                    gsub(/,,/,",")
+                    gsub(/,$/,"")
+                    gsub(/^,/,"")
+                }
+                1' "$2.csv" > temp && mv temp "$2.csv"
             else
                 whiptail --msgbox "You cannot delete the primary key of a table" $MSG_SIZE
             fi
@@ -70,8 +91,11 @@ function manage_table_fields(){
                 if [ -z "$FIELDS" ]; then
                     echo "$FIELD_NAME:${FIELD_TYPES[$FIELD_TYPE]}*" >> "$1.csv"
                 else
-                    sed -i "s/-/,$FIELD_NAME:${FIELD_TYPES[$FIELD_TYPE]}/" "$1.csv"
+                    export field="$FIELD_NAME:${FIELD_TYPES[$FIELD_TYPE]}"
+                    awk 'BEGIN{FS=OFS=","} {if(NR==1){print $0","ENVIRON["field"]}else{print $0",-null-"}}' "$1.csv" > temp && mv temp "$1.csv"
                 fi
+            else 
+                whiptail --msgbox "Name is empty or contains invalid characters" $MSG_SIZE
             fi
         else
             edit_field "${FIELDS[$OPTION]}" "$1"
@@ -91,8 +115,8 @@ function create_table(){
             break
         elif [ -f "$TABLE_NAME.csv" ]; then
             whiptail --msgbox "Table $TABLE_NAME already exists" $MSG_SIZE
-        elif [ -z "$TABLE_NAME" ]; then
-            whiptail --msgbox "Table name cannot be empty" $MSG_SIZE
+        elif [ -z "$TABLE_NAME" ] || ![[ $TABLE_NAME =~ ^[a-zA-Z0-9_]+$ ]]; then
+            whiptail --msgbox "Table name cannot be empty or contain invalid characters" $MSG_SIZE
         else
             touch "$TABLE_NAME.csv"
             manage_table_fields "$TABLE_NAME"
